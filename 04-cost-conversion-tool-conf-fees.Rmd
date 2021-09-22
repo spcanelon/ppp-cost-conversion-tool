@@ -1,0 +1,228 @@
+---
+title: "Conference Fees"
+description: |
+  Creating a cost conversion table using an example of conference fees.
+output: 
+  distill::distill_article:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+# loading packages----
+pkgs = c("tidyverse", "here", "glue", "gt", "DT")
+pacman::p_load(char = pkgs, install = FALSE, update = FALSE)
+
+# setting options----
+knitr::opts_chunk$set(echo = TRUE, fig.retina = 3, 
+                      warning=FALSE, message=FALSE)
+options(scipen=999)
+```
+
+# Data import
+
+```{r}
+# importing data
+gdp_ppp_full <-
+  read_rds(here("data-processed",
+                "economy-classification-w-GDP.Rds"))
+
+classification_trim <-
+  read_rds(here("data-processed",
+                "economy-classification.Rds"))
+```
+
+# Summarizing GDP (PPP-adjusted) per income group
+
+```{r summary}
+# produces summary
+gdp_ppp_summary <-
+gdp_ppp_full %>%
+  na.omit(PPP_GDPCap) %>%
+  group_by(income_group) %>%
+  summarize(
+    avg_GDP = mean(PPP_GDPCap), 
+    sd_GDP = sd(PPP_GDPCap)) %>%
+  mutate(norm_avg_GDP = avg_GDP/max(avg_GDP)) %>%
+  arrange(desc(avg_GDP)) %>%
+  mutate_if(is.numeric, round, 2)
+```
+
+```{r summary-table, echo=FALSE}
+gdp_ppp_summary %>% 
+  gt() %>%
+  tab_header(
+    title = md("GDP and Conversion Factor"),
+    subtitle = md("")
+  ) %>%
+  cols_label(
+    income_group = "Global Income Group",
+    avg_GDP = "Avg. GDP",
+    sd_GDP = "St. Dev. GDP",
+    norm_avg_GDP = "Conversion Factor"
+  ) %>%
+  fmt_currency(
+    columns = c("avg_GDP", "sd_GDP"),
+    currency = "USD",
+    decimals = 0
+  ) %>%
+  cols_align(
+    align = c("left"),
+    columns = c("income_group")
+  ) %>%
+  cols_align(
+    align = c("right"),
+    columns = c(-"income_group")
+  )
+```
+
+
+# Adding conference fees
+
+## Early bird fees
+
+```{r early-bird-fees, results="show"}
+# cost conversion
+cost_conversion_early_bird <-
+  gdp_ppp_summary %>%
+  select(-(avg_GDP:sd_GDP)) %>%
+  rename("conversion_factor"="norm_avg_GDP") %>%
+  mutate(industry = 75,
+         academia = 50,
+         student = 25) %>%
+  # adjusts by the conversion factor
+  mutate(industry = industry*conversion_factor, 
+         academia = academia*conversion_factor,
+         student = student*conversion_factor) %>%
+  mutate(industry = ifelse(income_group == "Low income",
+                           0, industry),
+         academia = ifelse(income_group == "Low income",
+                           0, academia),
+         student = ifelse(income_group == "Low income",
+                           0, student))
+```
+
+```{r early-bird-table, echo=FALSE}
+# creating gt() HTML table
+cost_conversion_early_bird %>% 
+  gt() %>%
+  tab_header(
+    title = md("Early Bird Conference Fees"),
+    subtitle = md("Cost Conversions by Global Income Group (US$)")
+  ) %>%
+  cols_label(
+    income_group = "Global Income Group",
+    conversion_factor = "Conversion Factor",
+    industry = "Industry",
+    academia = "Academia",
+    student = "Student"
+  ) %>%
+  fmt_currency(
+    columns = c("industry", "academia", "student"),
+    currency = "USD",
+    decimals = 0
+  ) %>%
+  cols_align(
+    align = c("left"),
+    columns = c("income_group")
+  ) %>%
+  cols_align(
+    align = c("right"),
+    columns = c(-"income_group")
+  )
+```
+
+## Regular fees
+
+```{r regular-fees, results = "show"}
+# cost conversion
+cost_conversion_regular <-
+  gdp_ppp_summary %>%
+  select(-(avg_GDP:sd_GDP)) %>%
+  rename("conversion_factor"="norm_avg_GDP") %>%
+  mutate(industry = 100,
+         academia = 75,
+         student = 50) %>%
+  # adjusts by the conversion factor
+  mutate(industry = industry*conversion_factor, 
+         academia = academia*conversion_factor,
+         student = student*conversion_factor) %>%
+  mutate(industry = ifelse(income_group == "Low income",
+                           0, industry),
+         academia = ifelse(income_group == "Low income",
+                           0, academia),
+         student = ifelse(income_group == "Low income",
+                           0, student))
+```
+
+```{r regular-table, echo=FALSE}
+# creating gt() HTML table
+cost_conversion_regular %>% 
+  gt() %>%
+  tab_header(
+    title = md("Regular Conference Fees"),
+    subtitle = md("Cost Conversions by Global Income Group (US$)")
+  ) %>%
+  cols_label(
+    income_group = "Global Income Group",
+    conversion_factor = "Conversion Factor",
+    industry = "Industry",
+    academia = "Academia",
+    student = "Student"
+  ) %>%
+  fmt_currency(
+    columns = c("industry", "academia", "student"),
+    currency = "USD",
+    decimals = 0
+  ) %>%
+  cols_align(
+    align = c("left"),
+    columns = c("income_group")
+  ) %>%
+  cols_align(
+    align = c("right"),
+    columns = c(-"income_group")
+  )
+```
+
+# Cost conversion charts
+
+## Early bird fees
+
+Prices listed are in USD
+
+```{r early-bird-chart, results = "show"}
+# creating DT table
+classification_trim %>%
+  left_join(cost_conversion_early_bird) %>%
+  mutate_at(vars(conversion_factor:student), factor) %>%
+  select(-conversion_factor, -economy_code) %>%
+  DT::datatable(
+    filter = 'top',
+    options = list(
+      pageLength = 5),
+    colnames = c('Country/Economy', 'Region', 
+                 'Global Income Group',
+                 'Industry', 'Academia', 'Student')) %>%
+  DT::formatCurrency(c("industry", "academia", "student"),
+                     digits = 0)
+```
+
+## Regular fees
+
+```{r regular-chart, results = "show"}
+# creating DT table
+classification_trim %>%
+  left_join(cost_conversion_regular) %>%
+  mutate_at(vars(conversion_factor:student), factor) %>%
+  select(-conversion_factor, -economy_code) %>%
+  DT::datatable(
+    filter = 'top',
+    options = list(
+      pageLength = 5),
+    colnames = c('Country/Economy', 'Region', 
+                 'Global Income Group',
+                 'Industry', 'Academia', 'Student')) %>%
+  DT::formatCurrency(c("industry", "academia", "student"),
+                     digits = 0)
+```

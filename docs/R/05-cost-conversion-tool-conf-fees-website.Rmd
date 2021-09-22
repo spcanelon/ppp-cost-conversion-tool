@@ -1,0 +1,229 @@
+---
+title: "Cost Conversion Resource"
+subtitle: "05 - Cost Conversion Tool - Conference Fees - Website"
+author: "Silvia P. Canelón"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: default
+    toc: false
+---
+
+```{r setup, message=FALSE, warning=FALSE, include=FALSE}
+# loading packages----
+pkgs = c("tidyverse", "here", "glue", "gt", "DT")
+pacman::p_load(char = pkgs, install = FALSE, update = FALSE)
+
+# setting options----
+knitr::opts_chunk$set(echo = FALSE, fig.retina = 3, 
+                      warning=FALSE, message=FALSE,
+                      results = "hide")
+options(scipen=999)
+```
+
+```{r}
+# importing data
+gdp_ppp_full <-
+  read_rds(here("data-processed",
+                "economy-classification-w-GDP.Rds"))
+
+classification_trim <-
+  read_rds(here("data-processed",
+                "economy-classification.Rds"))
+
+# May 6 2021: making exception for India given dramatic pandemic circumstances
+classification_trim <- 
+  classification_trim %>%
+  mutate(
+    income_group = case_when(
+      economy_name == "India" ~ "Low income",
+      TRUE ~ as.character(income_group)
+    )
+  )
+```
+
+```{r}
+# produces summary and shows it a gt() table
+gdp_ppp_summary <-
+gdp_ppp_full %>%
+  na.omit(PPP_GDPCap) %>%
+  group_by(income_group) %>%
+  summarize(avg_GDP = mean(PPP_GDPCap), sd_GDP = sd(PPP_GDPCap)) %>%
+  mutate(norm_avg_GDP = avg_GDP/max(avg_GDP)) %>%
+  arrange(desc(avg_GDP)) %>%
+  mutate_if(is.numeric, round, 2)
+gdp_ppp_summary %>% gt()
+
+
+```
+
+
+```{r early-bird-fees, results="hide"}
+# source: https://gitlab.com/user-2021-team/user-2021-global/-/blob/master/communication/website/conference_fees.md
+
+# cost conversion
+cost_conversion_early_bird <-
+  gdp_ppp_summary %>%
+  select(-(avg_GDP:sd_GDP)) %>%
+  rename("conversion_factor"="norm_avg_GDP") %>%
+  mutate(industry = 75,
+         academia = 50,
+         student = 25) %>%
+  mutate(industry = industry*conversion_factor, # adjusts by the conversion factor
+         academia = academia*conversion_factor,
+         student = student*conversion_factor) %>%
+  mutate(industry = ifelse(income_group == "Low income",
+                           0, industry),
+         academia = ifelse(income_group == "Low income",
+                           0, academia),
+         student = ifelse(income_group == "Low income",
+                           0, student))
+
+# creating gt() HTML table
+cost_conversion_early_bird %>% 
+  gt() %>%
+  tab_header(
+    title = md("Early Bird Conference Fees"),
+    subtitle = md("Cost Conversions by Global Income Group (US$)")
+  ) %>%
+  cols_label(
+    income_group = "Global Income Group",
+    conversion_factor = "Conversion Factor",
+    industry = "Industry",
+    academia = "Academia",
+    student = "Student"
+  ) %>%
+  fmt_currency(
+    columns = vars(industry, academia, student),
+    currency = "USD",
+    decimals = 0
+  )
+```
+
+```{r regular-fees, results = "hide"}
+# source: https://gitlab.com/user-2021-team/user-2021-global/-/blob/master/communication/website/conference_fees.md
+
+# cost conversion
+cost_conversion_regular <-
+  gdp_ppp_summary %>%
+  select(-(avg_GDP:sd_GDP)) %>%
+  rename("conversion_factor"="norm_avg_GDP") %>%
+  mutate(industry = 100,
+         academia = 75,
+         student = 50) %>%
+  mutate(industry = industry*conversion_factor, # adjusts by the conversion factor
+         academia = academia*conversion_factor,
+         student = student*conversion_factor) %>%
+  mutate(industry = ifelse(income_group == "Low income",
+                           0, industry),
+         academia = ifelse(income_group == "Low income",
+                           0, academia),
+         student = ifelse(income_group == "Low income",
+                           0, student))
+
+# creating gt() HTML table
+cost_conversion_regular %>% 
+  gt() %>%
+  tab_header(
+    title = md("Regular Conference Fees"),
+    subtitle = md("Cost Conversions by Global Income Group (US$)")
+  ) %>%
+  cols_label(
+    income_group = "Global Income Group",
+    conversion_factor = "Conversion Factor",
+    industry = "Industry",
+    academia = "Academia",
+    student = "Student"
+  ) %>%
+  fmt_currency(
+    columns = vars(industry, academia, student),
+    currency = "USD",
+    decimals = 0
+  )
+```
+
+<br><br>
+
+Conference fees are adapted to the country you reside in. The cost conversion was done according to Gross Domestic Product (GDP) adjusted by Purchasing Power Parity (PPP) provided by the World Bank. We want conference attendees from different parts of the world to be able to participate in useR! and believe that this is a fair approach. It also reflects the fact that the share of attendees from "High income" countries is higher and thus the price per person is different. The categories are listed in the table below. 
+
+You can read more about purchasing power parities, price level indexes, and PPP-based expenditures in the May 2020 World Bank post [New results from the International Comparison Program shed light on the size of the global economy.](https://blogs.worldbank.org/opendata/new-results-international-comparison-program-shed-light-size-global-economy?token=b6827c8c6191327b728245ab1a2d8d84)
+
+----
+
+The Global Income Groups listed in the fee tables below were obtained using data from the 2017 International Comparison Program (ICP) which you can read more about in the report [Purchasing Power Parities and the Size of World Economies: Results from the 2017 International Comparison Program](https://openknowledge.worldbank.org/bitstream/handle/10986/33623/9781464815300.pdf). The conversion factors were calculated using PPP-based GDP per capita for each Global Income Group using data from the [ICP 2017 World Bank Database](https://databank.worldbank.org/source/icp-2017).
+
+**Note:** Fees for "Low income" countries have intentionally been *waived* by useR!, reflected by a fee of `$0`.<br>
+**Update (May 6, 2021)**: This fee waiver has been extended to attendees from India due to dramatic pandemic circumstances and hardship (i.e. India will appear as a "Low income" country in the tables below).
+
+<br><br>
+
+---
+
+# Early Bird Fees
+
+<br><br>
+
+```{r, ref.label="early-bird-fees", results="show"}
+```
+
+<br><br>
+
+#### Use the table below to search for your country and attendee status (i.e. Industry, Academia, Student).<br>You can use the search bar, or filter according to a specific column.
+
+<br><br>
+
+```{r early-bird-chart, results = "show"}
+# creating DT table
+
+classification_trim %>%
+  left_join(cost_conversion_early_bird) %>%
+  mutate_at(vars(conversion_factor:student), factor) %>%
+  select(-conversion_factor, -economy_code) %>%
+  DT::datatable(style = "bootstrap", 
+                filter = 'top', 
+                options = list(
+                  pageLength = 10,
+                  autoWidth = TRUE),
+                colnames = c('Country/Economy', 'Region', 'Global Income Group',
+                             'Industry', 'Academia', 'Student')) %>%
+  DT::formatCurrency(c("industry", "academia", "student"),
+                     digits = 0)
+```
+
+<br>
+
+---
+
+<br><br>
+
+# Regular Fees
+
+<br><br>
+
+```{r, ref.label="regular-fees", results = "show"}
+```
+
+
+<br><br>
+
+#### Use the table below to search for your country and attendee status (i.e. Industry, Academia, Student).<br>You can use the search bar, or filter according to a specific column.
+
+<br><br>
+
+```{r regular-chart, results = "show"}
+# creating DT table
+
+classification_trim %>%
+  left_join(cost_conversion_regular) %>%
+  mutate_at(vars(conversion_factor:student), factor) %>%
+  select(-conversion_factor, -economy_code) %>%
+  DT::datatable(style = "bootstrap", 
+                filter = 'top', 
+                options = list(
+                  pageLength = 10,
+                  autoWidth = TRUE),
+                colnames = c('Country/Economy', 'Region', 'Global Income Group',
+                             'Industry', 'Academia', 'Student')) %>%
+  DT::formatCurrency(c("industry", "academia", "student"),
+                     digits = 0)
+```

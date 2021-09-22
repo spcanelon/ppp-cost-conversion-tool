@@ -1,0 +1,31 @@
+name: "useR2021-cost-conversion-tool"
+title: "useR!2021 Cost Conversion Tool"
+description: |
+  useR!2021 Cost Conversion Tool
+output_dir: "docs"
+theme: my-theme.css
+base_url: https://spcanelon.github.io/useR2021-cost-conversion-tool
+repository_url: https://github.com/spcanelon/useR2021-cost-conversion-tool
+source_url: true
+creative_commons: CC BY-SA
+twitter:
+  site: "@spcanelon"
+navbar:
+  logo:
+    image: fig/user-logo-color.png
+    href: https://user2021.r-project.org/
+  search: true
+  right:
+    - text: "Home"
+      href: index.html
+    - text: "About"
+      href: about.html
+    - text: "Analysis"
+      menu:
+      - text: "01 Data processing"
+        href: 01-data-processing.html
+      - text: "02 Sponsorship fees"
+        href: 03-cost-conversion-tool-sponsorship.html
+      - text: "03 Conference fees"
+        href: 04-cost-conversion-tool-conf-fees.html
+output: distill::distill_article

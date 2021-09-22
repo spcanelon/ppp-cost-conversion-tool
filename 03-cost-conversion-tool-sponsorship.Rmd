@@ -1,0 +1,171 @@
+---
+title: "Sponsorship Fees"
+description: |
+  Creating a cost conversion table using an example of sponsorship packages.
+output: 
+  distill::distill_article:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, message=FALSE, warning=FALSE, include=FALSE}
+# loading packages----
+pkgs = c("tidyverse", "here", "glue", "gt", "DT")
+pacman::p_load(char = pkgs, install = FALSE, update = FALSE)
+
+# setting options----
+knitr::opts_chunk$set(echo = TRUE, fig.retina = 3, 
+                      warning=FALSE, message=FALSE)
+options(scipen=999)
+```
+
+# Data import
+
+```{r}
+# importing data
+gdp_ppp_full <-
+  read_rds(here("data-processed",
+                "economy-classification-w-GDP.Rds"))
+
+classification_trim <-
+  read_rds(here("data-processed",
+                "economy-classification.Rds"))
+```
+
+# Cost conversion prep
+
+```{r conversion-factor-prep}
+# summarizing GDP (PPP-adjusted) per income_group
+gdp_ppp_summary <-
+gdp_ppp_full %>%
+  na.omit(PPP_GDPCap) %>%
+  group_by(income_group) %>%
+  summarize(
+    avg_GDP = mean(PPP_GDPCap), 
+    sd_GDP = sd(PPP_GDPCap)) %>%
+  # creating conversion factor
+  mutate(norm_avg_GDP = avg_GDP/max(avg_GDP)) %>%
+  arrange(desc(avg_GDP)) %>%
+  mutate_if(is.numeric, round, 2)
+```
+
+```{r conversion-factor-table, echo=FALSE}
+gdp_ppp_summary %>% 
+  gt() %>%
+  tab_header(
+    title = md("GDP and Conversion Factor"),
+    subtitle = md("")
+  ) %>%
+  cols_label(
+    income_group = "Global Income Group",
+    avg_GDP = "Avg. GDP",
+    sd_GDP = "St. Dev. GDP",
+    norm_avg_GDP = "Conversion Factor"
+  ) %>%
+  fmt_currency(
+    columns = c("avg_GDP", "sd_GDP"),
+    currency = "USD",
+    decimals = 0
+  ) %>%
+  cols_align(
+    align = c("left"),
+    columns = c("income_group")
+  ) %>%
+  cols_align(
+    align = c("right"),
+    columns = c(-"income_group")
+  )
+```
+
+```{r sponsorship-levels}
+# adding sponsorship level example
+cost_conversion <-
+  gdp_ppp_summary %>%
+  select(-(avg_GDP:sd_GDP)) %>%
+  rename("conversion_factor"="norm_avg_GDP") %>%
+  mutate(platinum = 15000,
+         gold = 10000,
+         silver = 7500,
+         bronze = 3000,
+         network = 1000) %>%
+  mutate(platinum = platinum*conversion_factor, # adjusts by the conversion factor
+         gold = gold*conversion_factor,
+         silver = silver*conversion_factor,
+         bronze = bronze*conversion_factor,
+         network = network*conversion_factor) 
+```
+
+To create sponsorship packages, `income_group`s "Low income" and "Lower middle income" were combined into one category: "Lower income"
+
+```{r sponsorship-levels-trim}
+# dropping the "Low income" category and reclassifying "Lower middle income"
+# to create sponsorship packages
+cost_conversion_trim <-
+  cost_conversion %>%
+  filter(income_group != "Low income") %>%
+  mutate(income_group = fct_recode(
+    income_group,
+    "Lower income" = "Lower middle income")
+    )
+```
+
+```{r sponsorship-table, echo=FALSE}
+cost_conversion_trim %>% 
+  gt() %>%
+  tab_header(
+    title = md("Sponsorship Packages"),
+    subtitle = md("Cost Conversions by Global Income Group (US$)")
+  ) %>%
+  cols_label(
+    income_group = "Global Income Group",
+    conversion_factor = "Conversion Factor",
+    platinum = "Platinum",
+    gold = "Gold",
+    silver = "Silver",
+    bronze = "Bronze",
+    network = "Network"
+  ) %>%
+  fmt_currency(
+    columns = c("platinum", "gold", "silver", "bronze", "network"),
+    currency = "USD",
+    decimals = 0
+  ) %>%
+  cols_align(
+    align = c("left"),
+    columns = c("income_group")
+  ) %>%
+  cols_align(
+    align = c("right"),
+    columns = c(-"income_group")
+  )
+```
+
+# Cost conversion chart
+
+Prices listed are in USD
+
+```{r conversion-pkg-table}
+# recoding "Low income" and "Lower middle income" as "Lower income" to create sponsorship packages
+
+classification_trim %>% 
+  mutate(income_group = fct_recode(
+    income_group,
+    "Lower income" = "Low income",
+    "Lower income" = "Lower middle income")) %>%
+  left_join(cost_conversion_trim) %>%
+  mutate_at(vars(conversion_factor:network), factor) %>%
+    DT::datatable(
+      filter = 'top', 
+      options = list(
+        pageLength = 5),
+      colnames = c('Country/Economy', 'Economy Code', 'Region', 
+                   'Global Income Group', 'Conversion Factor', 
+                   'Platinum', 'Gold', 'Silver', 'Bronze', 'Network')
+      ) %>%
+  DT::formatCurrency(
+    c("platinum", "gold", "silver", "bronze", "network"),
+    currency = "$",
+    digits = 0
+    )
+```
+

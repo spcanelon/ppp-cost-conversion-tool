@@ -1,0 +1,135 @@
+---
+title: "Data Processing"
+description: |
+  Data wrangling and preparation of Gross Domestic Product (GDP) and Purchasing Power Parity (PPP) data.
+output: 
+  distill::distill_article:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, message=FALSE, warning=FALSE, include=FALSE}
+# loading packages----
+pkgs = c("tidyverse", "janitor", "here", "glue")
+pacman::p_load(char = pkgs, install = FALSE, update = FALSE)
+
+# setting options----
+knitr::opts_chunk$set(echo = TRUE, fig.retina = 3, 
+                      warning=FALSE, message=FALSE)
+options(scipen=999)
+```
+
+# Data import
+
+```{r}
+# setting data directory
+dirRawData = here("data-raw", "/")
+dirProcData = here("data-processed", "/")
+
+# World Bank Country and Lending Groups
+classification_raw <- 
+  readxl::read_excel(
+    path = glue(dirRawData, "WorldBank-Country-Income-Class.xls"),
+    sheet = "List of economies",
+    range = "A5:I224") %>%
+  janitor::clean_names()
+glimpse(classification_raw)
+
+# Purchasing Power Parity
+gdp_by_ppp_raw <- 
+ read_csv(glue(dirRawData, "ICP-2017-GDP-PPP-Data.csv"),
+          col_types = "fffffcn") %>%
+  janitor::clean_names()
+glimpse(gdp_by_ppp_raw)
+
+gdp_by_ppp_meta_raw <- 
+  read_csv(glue(dirRawData, "ICP-2017-GDP-PPP-Metadata.csv")) %>%
+  janitor::clean_names()
+```
+
+# Data wranging
+
+```{r}
+classification <- 
+  classification_raw %>%
+  filter(economy != "x") %>%
+  select(-x_1) %>%
+  remove_empty(c("rows", "cols")) %>%
+  rename("economy_name"="economy", "economy_code"="code") %>%
+  mutate_at(vars(region, income_group, lending_category), factor) %>%
+  mutate(income_group = factor(income_group, levels = unique(income_group)),
+         income_group = fct_relevel(income_group, 
+                                    "Low income", "Lower middle income"))
+glimpse(classification)
+
+gdp_by_ppp <-
+  gdp_by_ppp_raw %>%
+    select(-series_code) %>%
+    filter(!is.na(country_code)) %>%
+    rename("economy_name"="country_name", "economy_code"="country_code",
+           "value"="x2017_yr2017") %>%
+    mutate(value = round(value, 2),
+           series_name = 
+             ifelse(series_name == "1000000:GROSS DOMESTIC PRODUCT", 
+                    "GDP", NA)) 
+glimpse(gdp_by_ppp)
+```
+
+# Data filtering
+
+## Economy classification
+
+```{r}
+# data trimming
+classification_trim <-
+  classification %>%
+  select(economy_name, economy_code, region, income_group)
+glimpse(classification_trim)
+
+# writing to Rds and CSV files
+write_rds(classification_trim, 
+          here(dirProcData, 
+               "economy-classification.Rds"))
+write_csv(classification_trim, 
+          here(dirProcData, 
+               "economy-classification.csv"))
+```
+
+## PPP-adjusted GDP
+
+```{r}
+# data trimming
+gdp_by_ppp_trim <-
+  gdp_by_ppp %>%
+    select(economy_name, economy_code, 
+           classification_code, value) %>%
+  pivot_wider(names_from = classification_code, values_from = value) %>%
+  rename("PPP_GDPCap"="PCAP.PP", "PPP"="PPPGlob")
+glimpse(gdp_by_ppp_trim)
+
+# writing to Rds and CSV files
+write_rds(gdp_by_ppp_trim, 
+          here(dirProcData, 
+               "economy-GDP.Rds"))
+write_csv(gdp_by_ppp_trim, 
+          here(dirProcData, 
+               "economy-GDP.csv"))
+```
+
+# Joining classification data with PPP data
+
+```{r}
+gdp_ppp_full <- 
+  classification_trim %>% 
+  left_join(gdp_by_ppp_trim)
+glimpse(gdp_ppp_full)
+
+# writing to Rds and CSV files
+write_rds(gdp_ppp_full, 
+          here(dirProcData, 
+               "economy-classification-w-GDP.Rds"))
+write_csv(gdp_ppp_full, 
+          here(dirProcData, 
+               "economy-classification-w-GDP.csv"))
+```
+

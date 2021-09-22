@@ -1,0 +1,237 @@
+---
+title: "Cost Conversion Resource"
+author: "Silvia P. Canelón"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: cosmo
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+# loading packages----
+pkgs = c("tidyverse", "janitor", "gt", "DT", "here", "glue", "fontawesome")
+pacman::p_load(char = pkgs, install = FALSE, update = FALSE)
+
+# setting options----
+knitr::opts_chunk$set(echo = TRUE, fig.retina = 3, 
+                      warning=FALSE, message=FALSE)
+options(scipen=999)
+```
+# `r fa("arrow-circle-down")` Jump down to the [Cost conversion chart](#cost-conversion-chart)
+
+
+# Data import
+
+```{r}
+# setting data directory
+dirData = here::here("data-raw/")
+
+# World Bank Country and Lending Groups
+classification_raw <- 
+  readxl::read_excel(
+    path = glue(dirData, "WorldBank-Country-Income-Class.xls"),
+    sheet = "List of economies",
+    range = "A5:I224") %>%
+  janitor::clean_names()
+glimpse(classification_raw)
+
+# Purchasing Power Parity
+gdp_by_ppp_raw <- 
+ read_csv(glue(dirData, "ICP-2017-GDP-PPP-Data.csv"),
+          col_types = "fffffcn") %>%
+  janitor::clean_names()
+glimpse(gdp_by_ppp_raw)
+
+gdp_by_ppp_meta_raw <- 
+  read_csv(glue(dirData, "ICP-2017-GDP-PPP-Metadata.csv")) %>%
+  janitor::clean_names()
+```
+
+# Data wranging
+
+```{r}
+classification <- 
+  classification_raw %>%
+  filter(economy != "x") %>%
+  select(-x_1) %>%
+  remove_empty(c("rows", "cols")) %>%
+  rename("economy_name"="economy", "economy_code"="code") %>%
+  mutate_at(vars(region, income_group, lending_category), factor) %>%
+  mutate(income_group = factor(income_group, levels = unique(income_group)),
+         income_group = fct_relevel(income_group, 
+                                    "Low income", "Lower middle income"))
+glimpse(classification)
+
+gdp_by_ppp <-
+  gdp_by_ppp_raw %>%
+    select(-series_code) %>%
+    filter(!is.na(country_code)) %>%
+    rename("economy_name"="country_name", "economy_code"="country_code",
+           "value"="x2017_yr2017") %>%
+    mutate(value = round(value, 2),
+           series_name = 
+             ifelse(series_name == "1000000:GROSS DOMESTIC PRODUCT", 
+                    "GDP", NA)) 
+glimpse(gdp_by_ppp)
+```
+
+# Data trimming
+
+```{r}
+classification_trim <-
+  classification %>%
+  select(economy_name, economy_code, region, income_group)
+glimpse(classification_trim)
+
+gdp_by_ppp_trim <-
+  gdp_by_ppp %>%
+    select(economy_name, economy_code, 
+           classification_code, value) %>%
+  pivot_wider(names_from = classification_code, values_from = value) %>%
+  rename("PPP_GDPCap"="PCAP.PP", "PPP"="PPPGlob")
+glimpse(gdp_by_ppp_trim)
+```
+
+# Joining classification data with PPP data
+
+```{r}
+gdp_ppp_full <- classification_trim %>% left_join(gdp_by_ppp_trim)
+glimpse(gdp_ppp_full)
+```
+# Data viz
+
+```{r}
+library(viridis)
+
+# boxplot ----
+gdp_ppp_full %>%
+  ggplot(aes(x = PPP_GDPCap, y = income_group)) +
+  geom_boxplot(aes(fill = income_group)) +
+  scale_fill_viridis_d() +
+  scale_x_continuous(breaks=seq(0, 130000, by = 20000)) +
+  theme_minimal() +
+  theme(text = element_text(family = "Source Sans Pro"),
+        plot.title.position = "plot",
+        legend.position = "none",
+        panel.grid.minor.x = element_blank()) +
+  labs(x = "PPP-based GDP per capita (US$)", y = NULL,
+       title = "World economies grouped into income groups",
+       subtitle = "Utilizing Gross Domestic Product (GDP, per capita) adjusted for Purchasing Power Parity (PPP)",
+       caption = "Data source: ICP 2017 -- Last updated: Oct. 01, 2020")
+
+# scatterplot ----
+gdp_ppp_full %>%
+  ggplot(aes(x = PPP_GDPCap, y = log10(PPP))) +
+  geom_point(aes(color = income_group)) +
+  scale_colour_viridis_d(name = "Income group") +
+  scale_x_continuous(breaks=seq(0, 130000, by = 20000)) +
+  theme_minimal() +
+  theme(text = element_text(family = "Source Sans Pro"),
+        plot.title.position = "plot",
+        legend.position = c(1,1),
+        legend.justification = c("right", "top"),
+        legend.box.just = "right",
+        legend.background = element_rect(color = "white"),
+        panel.grid.minor.x = element_blank()) +
+  labs(x = "PPP-based GDP per capita (US$)",
+       title = "World economies grouped into income groups",
+       subtitle = "Utilizing Gross Domestic Product (GDP, per capita) adjusted for Purchasing Power Parity (PPP)",
+       caption = "Data source: ICP 2017 -- Last updated: Oct. 01, 2020")
+```
+
+# Cost conversion
+
+## Example
+
+```{r}
+# summarizing GDP (PPP-adjusted) per income_group
+gdp_ppp_summary <-
+gdp_ppp_full %>%
+  na.omit(PPP_GDPCap) %>%
+  group_by(income_group) %>%
+  summarize(avg_GDP = mean(PPP_GDPCap), sd_GDP = sd(PPP_GDPCap)) %>%
+  mutate(norm_avg_GDP = avg_GDP/max(avg_GDP)) %>%
+  arrange(desc(avg_GDP)) %>%
+  mutate_if(is.numeric, round, 2)
+gdp_ppp_summary %>% gt()
+
+# adding sponsorship level example
+cost_conversion <-
+  gdp_ppp_summary %>%
+  select(-(avg_GDP:sd_GDP)) %>%
+  rename("conversion_factor"="norm_avg_GDP") %>%
+  mutate(platinum = 15000,
+         gold = 10000,
+         silver = 7500,
+         bronze = 3000,
+         network = 1000) %>%
+  mutate(platinum = platinum*conversion_factor, # adjusts by the conversion factor
+         gold = gold*conversion_factor,
+         silver = silver*conversion_factor,
+         bronze = bronze*conversion_factor,
+         network = network*conversion_factor)
+```
+
+**Modifications:**
+
+- To create sponsorship packages, `income_group`s "Low income" and "Lower middle income" were combined into one category: "Lower income"
+
+```{r}
+# dropping the "Low income" category and reclassifying "Lower middle income"
+# to create sponsorship packages
+cost_conversion_trim <-
+  cost_conversion %>%
+  filter(income_group != "Low income") %>%
+  mutate(income_group = fct_recode(income_group,
+                                   "Lower income" = "Lower middle income"))
+cost_conversion_trim %>% 
+  gt() %>%
+  tab_header(
+    title = md("Cost Conversions by Global Income Group"),
+    subtitle = md("Adjustments by GDP and PPP (US$)")
+  ) %>%
+  cols_label(
+    income_group = "Global Income Group",
+    conversion_factor = "Conversion Factor",
+    platinum = "Platinum",
+    gold = "Gold",
+    silver = "Silver",
+    bronze = "Bronze",
+    network = "Network"
+  ) %>%
+  fmt_currency(
+    columns = c("platinum", "gold", "silver", "bronze", "network"),
+    currency = "USD",
+    decimals = 0
+  )
+```
+
+## Cost conversion chart
+
+Prices listed are in USD
+
+```{r}
+# recoding "Low income" and "Lower middle income" as "Lower income"
+# to create sponsorship packages
+
+classification_trim %>% 
+  mutate(income_group = fct_recode(income_group,
+                                   "Lower income" = "Low income",
+                                   "Lower income" = "Lower middle income")) %>%
+  left_join(cost_conversion_trim) %>%
+  mutate_at(vars(conversion_factor:network), factor) %>%
+  select(-conversion_factor, -economy_code) %>%
+  DT::datatable(style = "bootstrap", 
+                filter = 'top', 
+                options = list(
+                  pageLength = 15,
+                  autoWidth = TRUE),
+                colnames = c('Country/Economy', 'Region', 'Global Income Group',
+                             'Platinum', 'Gold', 'Silver', 'Bronze', 'Network')) %>%
+  DT::formatCurrency(c("platinum", "gold", "silver", "bronze", "network"),
+                     digits = 0)
+```
+

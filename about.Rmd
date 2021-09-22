@@ -1,0 +1,116 @@
+---
+title: "About"
+description: |
+  Resources and data sources used to understand world economies and the Purchasing Power Parity metric
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Resources
+
+**Appendix J** (Classification of the World's Economies) of the 2017 International Comparison Program report released May 2020 (link 5 below) includes a classification of the world's economies into four categories: low income, lower middle income, higher middle income, and high income.
+
+From least technical to most technical, these resources talk about **Purchasing Power Parity (PPP)** as a metric important to consider when assessing a nation's ability to purchase goods and services:
+
+
+1. [Make Your Prices Fair and Scalable, Globally](https://www.entrepreneur.com/article/250161) (2015) by Jurgen Appelo at Entrepreneur -- blog post in layperson terms
+
+1. [How to Calculate and Use Purchasing Power Parity – PPP](https://www.thebalance.com/purchasing-power-parity-3305953) (2020) by Kimberly Amadeo at The Balance -- blog post in layperson terms with some technical language
+
+1. [The Big Mac index](https://www.economist.com/news/2020/07/15/the-big-mac-index) (2020) from The Economist -- interactive currency comparison tool
+
+    - GitHub repo: https://github.com/TheEconomist/big-mac-data#the-big-mac-index
+    - R code to calculate Big Mac Index (within a Jupyter Notebook): https://github.com/theeconomist/big-mac-data/blob/master/Big%20Mac%20data%20generator.ipynb
+
+1. [New results from the International Comparison Program shed light on the size of the global economy](https://blogs.worldbank.org/opendata/new-results-international-comparison-program-shed-light-size-global-economy?token=b6827c8c6191327b728245ab1a2d8d84) (2020) from the International Comparison Program (ICP) at World Bank Group -- detailed blog post with technical language
+
+1. [Purchasing Power Parities and the Size of World Economies: Results from the 2017 International Comparison Program](https://openknowledge.worldbank.org/bitstream/handle/10986/33623/9781464815300.pdf) (2020) from the ICP at World Bank Group -- in depth report with technical language
+
+# Data provenance
+
+## World Bank Country and Lending Groups
+
+- Data source: Source linked in Appendix J of the [Purchasing Power Parities and the Size of World Economies: Results from the 2017 International Comparison Program](https://openknowledge.worldbank.org/bitstream/handle/10986/33623/9781464815300.pdf)
+    - https://datahelpdesk.worldbank.org/knowledgebase/articles/906519-world-bank-country-and-lending-groups
+    - Data file downloaded renamed `WorldBank-Country-Income-Class.xls`
+
+## Purchasing Power Parity
+
+- Data source: Linked in the [International Comparison Group data site](https://www.worldbank.org/en/programs/icp#5) . Downloaded from the [ICP 2017 World Bank Database](https://databank.worldbank.org/source/icp-2017) as `ICP-2017-GDP-PPP.zip` using the following selections: 
+  - Database: ICP 2017
+  - Country: All
+  - Classification: 
+    - Expenditure per capita, PPP-based (US$)
+    - Purchasing Power Parity (PPP) (US$ = 1)
+  - Series: Gross Domestic Product
+  - Time: 2017
+- Data and metadata downloaded in a zip file
+    - Data file renamed to `ICP-2017-GDP-Data.csv` 
+    - Metadata file rename to `ICP-2017-GDP-Metadata.csv` 
+    - Data from database: ICP 2017
+    - Last Updated: 10/01/2020
+
+# Data visualization
+
+```{r data-import}
+# setting figure directory
+dirFig = here("fig", "/")
+
+# importing data
+gdp_ppp_full <-
+  read_rds(here("data-processed",
+                "economy-classification-w-GDP.Rds"))
+
+```
+
+```{r boxplot, echo=FALSE, fig.alt="Box plot showing world economy Gross Domestic Product (GDP) per capita adjusted by Purchasing Power Parity and categorized into four income groups. The y axis has the income groups of high income, upper middle income, lower middle income, and low income. The x axis has the PPP-adjusted GPD per capita ranging from approximately 0 US$ to 130,000 US$. The high income group has a median around 40,000 US$, the middle upper income group has a median around 15,000 US$, the lower income group around 5,000 US$, and the lower income group around 2,000 US$. The spread of GDP per capita is widest for the upper income group and progressively narrows in the direction of the lower income group.", fig.cap="Gross Domestic Product per capita after adjusting for Purchasing Power Parity, categorized by income group"}
+# boxplot ----
+gdp_ppp_full %>%
+  ggplot(aes(x = PPP_GDPCap, y = income_group)) +
+  geom_boxplot(aes(fill = income_group)) +
+  scale_fill_viridis_d() +
+  scale_x_continuous(breaks=seq(0, 130000, by = 20000)) +
+  theme_minimal() +
+  theme(text = element_text(family = "Source Sans Pro"),
+        plot.title.position = "plot",
+        legend.position = "none",
+        panel.grid.minor.x = element_blank()) +
+  labs(x = "PPP-based GDP per capita (US$)", y = NULL,
+       title = "World economies grouped into income groups",
+       subtitle = "Utilizing Gross Domestic Product (GDP, per capita) adjusted for Purchasing Power Parity (PPP)",
+       caption = "Data source: ICP 2017 -- Last updated: Oct. 01, 2020")
+
+# saving the plot as PNG
+ggsave(plot = last_plot(), 
+       here(dirFig, "income-groups-by-GDP-boxplot.png"), 
+         device = "png")
+```
+
+```{r scatterplot, echo=FALSE, fig.alt="Scatterplot showing an alternate grouping of world economies relative to figure 1. The y axis has the log base 10 of the Purchasing Power Parity ranging from -0.5 to 4. The x axis is the same. It has the PPP-adjusted GPD per capita ranging from approximately 0 US$ to 130,000 US$. This representation of the data shows all income groups except the high income group narrowly spread out between 0 US$ and 30,000 US$. The data points for the high income group are spread out over a much wider band from 20,000 US$ to 130,000 US$", fig.cap="Purchasing Power Parity against PPP-adjusted Gross Domestic Product per capita, and color-coded by income group"}
+# scatterplot ----
+gdp_ppp_full %>%
+  ggplot(aes(x = PPP_GDPCap, y = log10(PPP))) +
+  geom_point(aes(color = income_group)) +
+  scale_colour_viridis_d(name = "Income group") +
+  scale_x_continuous(breaks=seq(0, 130000, by = 20000)) +
+  theme_minimal() +
+  theme(text = element_text(family = "Source Sans Pro"),
+        plot.title.position = "plot",
+        legend.position = c(1,1),
+        legend.justification = c("right", "top"),
+        legend.box.just = "right",
+        legend.background = element_rect(color = "white"),
+        panel.grid.minor.x = element_blank()) +
+  labs(x = "PPP-based GDP per capita (US$)",
+       title = "World economies grouped into income groups",
+       subtitle = "Utilizing Gross Domestic Product (GDP, per capita) adjusted for Purchasing Power Parity (PPP)",
+       caption = "Data source: ICP 2017 -- Last updated: Oct. 01, 2020")
+
+# saving the plot as PNG
+ggsave(plot = last_plot(), 
+       here(dirFig,
+            "income-groups-by-GDP-scatterplot.png"), 
+         device = "png")
+```
